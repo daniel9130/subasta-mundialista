@@ -161,25 +161,13 @@ begin
     raise exception 'Marcador fuera de rango';
   end if;
 
-  select *
-  into v_match
-  from public.matches
-  where id = p_match_id;
-
+  select * into v_match from public.matches where id = p_match_id;
   if not found then
     raise exception 'Partido no encontrado';
   end if;
 
-  v_opening_at := to_timestamp(
-    to_char(v_match.opening_date, 'YYYY-MM-DD') || ' ' || v_match.opening_time,
-    'YYYY-MM-DD HH12:MI AM'
-  )::timestamp;
-
-  v_closing_at := to_timestamp(
-    to_char(v_match.opening_date, 'YYYY-MM-DD') || ' ' || v_match.closing_time,
-    'YYYY-MM-DD HH12:MI AM'
-  )::timestamp;
-
+  v_opening_at := to_timestamp(to_char(v_match.opening_date, 'YYYY-MM-DD') || ' ' || v_match.opening_time, 'YYYY-MM-DD HH12:MI AM')::timestamp;
+  v_closing_at := to_timestamp(to_char(v_match.opening_date, 'YYYY-MM-DD') || ' ' || v_match.closing_time, 'YYYY-MM-DD HH12:MI AM')::timestamp;
   v_now := timezone('America/Bogota', now());
 
   if v_now < v_opening_at then
@@ -190,34 +178,13 @@ begin
     raise exception 'La subasta ya esta cerrada';
   end if;
 
-  select *
-  into v_participant
-  from public.participants
-  where id = p_participant_id
-    and match_id = p_match_id;
-
+  select * into v_participant from public.participants where id = p_participant_id and match_id = p_match_id;
   if not found then
     raise exception 'Participante no inscrito para este partido';
   end if;
 
-  insert into public.bids (
-    match_id,
-    cell_key,
-    row_goal,
-    col_goal,
-    participant_id,
-    participant_name,
-    amount
-  )
-  values (
-    p_match_id,
-    p_cell_key,
-    p_row_goal,
-    p_col_goal,
-    p_participant_id,
-    v_participant.name,
-    p_amount
-  )
+  insert into public.bids (match_id, cell_key, row_goal, col_goal, participant_id, participant_name, amount)
+  values (p_match_id, p_cell_key, p_row_goal, p_col_goal, p_participant_id, v_participant.name, p_amount)
   on conflict (match_id, cell_key)
   do update set
     participant_id = excluded.participant_id,
@@ -236,6 +203,36 @@ end;
 $$;
 
 grant execute on function public.place_bid(uuid, text, integer, integer, uuid, integer) to anon, authenticated;
+
+create or replace function public.reset_auction(p_match_id uuid)
+returns table(deleted_bids integer, deleted_participants integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted_bids integer := 0;
+  v_deleted_participants integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Solo un administrador puede limpiar la subasta';
+  end if;
+
+  delete from public.bids where match_id = p_match_id;
+  get diagnostics v_deleted_bids = row_count;
+
+  delete from public.participants where match_id = p_match_id;
+  get diagnostics v_deleted_participants = row_count;
+
+  update public.matches
+  set updated_at = now()
+  where id = p_match_id;
+
+  return query select v_deleted_bids, v_deleted_participants;
+end;
+$$;
+
+grant execute on function public.reset_auction(uuid) to authenticated;
 
 do $$
 begin
