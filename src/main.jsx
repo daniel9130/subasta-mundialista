@@ -10,6 +10,7 @@ import {
   Lock,
   Settings,
   Shield,
+  Trash2,
   Trophy,
   UserPlus,
   Users,
@@ -112,6 +113,8 @@ function App() {
   const [now, setNow] = React.useState(() => new Date());
   const [databaseStatus, setDatabaseStatus] = React.useState(isSupabaseConfigured ? "Conectando base de datos..." : "Modo local");
   const [configSaveStatus, setConfigSaveStatus] = React.useState("");
+  const [resetStatus, setResetStatus] = React.useState("");
+  const [isResetting, setIsResetting] = React.useState(false);
 
   const totalRaised = Object.values(bids).reduce((sum, bid) => sum + bid.amount, 0);
   const auctionStatus = getAuctionStatus(match, now);
@@ -234,6 +237,49 @@ function App() {
     if (showStatus) setConfigSaveStatus("Configuracion guardada en Supabase");
     setDatabaseStatus("Supabase conectado");
     return true;
+  }
+
+  async function resetAuction() {
+    const confirmed = window.confirm(
+      "Esto borrara todas las pujas y participantes de esta subasta. Antes de continuar, exporte el CSV si necesita conservar el reporte. Desea limpiar para una nueva subasta?",
+    );
+
+    if (!confirmed) return;
+
+    setIsResetting(true);
+    setResetStatus("");
+
+    if (!isSupabaseConfigured) {
+      setBids({});
+      setParticipants([]);
+      setCurrentUser(null);
+      setResetStatus("Subasta local limpiada");
+      setIsResetting(false);
+      return;
+    }
+
+    if (!adminUser) {
+      setResetStatus("Inicie sesion como administrador");
+      setIsResetting(false);
+      return;
+    }
+
+    const { error } = await supabase.rpc("reset_auction", { p_match_id: DEFAULT_MATCH_ID });
+
+    if (error) {
+      console.error(error);
+      setResetStatus("No se pudo limpiar. Ejecute nuevamente supabase-schema.sql en Supabase.");
+      setIsResetting(false);
+      return;
+    }
+
+    setBids({});
+    setParticipants([]);
+    setCurrentUser(null);
+    setWinnerQuery({ rowGoal: "0", colGoal: "0" });
+    setReportSearch("");
+    setResetStatus("Subasta limpia. Configure el siguiente partido y guarde.");
+    setIsResetting(false);
   }
 
   function goToConfig() {
@@ -548,6 +594,19 @@ function App() {
             <button className="secondary-button" type="button" onClick={() => saveMatch()}>Guardar configuracion</button>
             <button className="primary-button" type="button" onClick={saveConfigAndGoToAuction}>Ir a subasta</button>
           </div>
+
+          <section className="reset-panel">
+            <div>
+              <span className="eyebrow compact"><Trash2 size={15} /> Nueva subasta</span>
+              <h3>Limpiar participantes y pujas</h3>
+              <p>Use esta opcion despues de exportar el reporte final. Borra la subasta actual y conserva la configuracion del partido para ajustarla de nuevo.</p>
+              {resetStatus && <strong className="reset-status">{resetStatus}</strong>}
+            </div>
+            <button className="danger-button" type="button" onClick={resetAuction} disabled={isResetting}>
+              <Trash2 size={18} />
+              {isResetting ? "Limpiando..." : "Limpiar para nueva subasta"}
+            </button>
+          </section>
 
           <ReportPanel
             match={match}
