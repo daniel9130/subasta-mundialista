@@ -22,6 +22,7 @@ const rows = [0, 1, 2, 3, 4, 5, 6];
 const columns = [0, 1, 2, 3, 4, 5, 6];
 const CONFIG_PASSWORD = "admin123";
 const DEFAULT_MATCH_ID = "00000000-0000-4000-8000-000000000001";
+const PARTICIPANT_STORAGE_KEY = `subasta-participant-${DEFAULT_MATCH_ID}`;
 
 const teams = [
   { name: "Alemania", code: "GER" },
@@ -98,7 +99,7 @@ function App() {
   const [screen, setScreen] = React.useState("cover");
   const [match, setMatch] = React.useState(defaultMatch);
   const [participants, setParticipants] = React.useState([]);
-  const [currentUser, setCurrentUser] = React.useState(null);
+  const [currentUser, setCurrentUser] = React.useState(readStoredParticipant);
   const [bids, setBids] = React.useState({});
   const [selectedCell, setSelectedCell] = React.useState(null);
   const [bidAmount, setBidAmount] = React.useState("1000");
@@ -206,7 +207,10 @@ function App() {
         .eq("match_id", DEFAULT_MATCH_ID)
         .order("joined_at", { ascending: true });
       if (participantsError) throw participantsError;
-      setParticipants((storedParticipants || []).map(mapParticipantFromDatabase));
+
+      const mappedParticipants = (storedParticipants || []).map(mapParticipantFromDatabase);
+      setParticipants(mappedParticipants);
+      setCurrentUser((storedUser) => validateStoredParticipant(storedUser, mappedParticipants));
 
       const { data: storedBids, error: bidsError } = await supabase.from("bids").select("*").eq("match_id", DEFAULT_MATCH_ID);
       if (bidsError) throw bidsError;
@@ -255,6 +259,7 @@ function App() {
       setBids({});
       setParticipants([]);
       setCurrentUser(null);
+      clearStoredParticipant();
       setResetStatus("Subasta local limpiada");
       setIsResetting(false);
       return;
@@ -278,6 +283,7 @@ function App() {
     setBids({});
     setParticipants([]);
     setCurrentUser(null);
+    clearStoredParticipant();
     setWinnerQuery({ rowGoal: "0", colGoal: "0" });
     setReportSearch("");
     setResetStatus("Subasta limpia. Configure el siguiente partido y guarde.");
@@ -349,6 +355,11 @@ function App() {
       return;
     }
 
+    if (currentUser) {
+      setRegistrationError("Este dispositivo ya tiene un jugador inscrito para esta subasta");
+      return;
+    }
+
     let participant = { id: crypto.randomUUID(), name, phone, joinedAt: new Date().toISOString() };
 
     if (isSupabaseConfigured) {
@@ -379,6 +390,7 @@ function App() {
 
     setParticipants((current) => upsertParticipant(current, participant));
     setCurrentUser(participant);
+    storeParticipant(participant);
     setRegistration({ name: "", phone: "" });
     setRegistrationError("");
     setScreen("auction");
@@ -534,7 +546,7 @@ function App() {
             <div>
               <span className="eyebrow"><UserPlus size={16} /> Inscripcion abierta</span>
               <h1>Registro de participante</h1>
-              <p>Cualquier persona con el link puede inscribirse para entrar a la subasta del partido {match.homeTeam} vs {match.awayTeam}.</p>
+              <p>Registre nombre completo y celular. Una vez inscrito, este jugador queda fijo para esta subasta en este dispositivo.</p>
             </div>
             <form className="register-form" onSubmit={saveParticipant}>
               <label>Nombre completo
@@ -665,8 +677,8 @@ function App() {
 
       {currentUser && (
         <div className="current-user-bar">
-          <span>Participante: <strong>{currentUser.name}</strong></span>
-          <button type="button" onClick={() => setScreen("register")}>Cambiar usuario</button>
+          <span>Participante: <strong>{currentUser.name}</strong> - {currentUser.phone}</span>
+          <span className="locked-user-note">Jugador fijo para esta subasta</span>
         </div>
       )}
 
@@ -854,6 +866,34 @@ function upsertParticipant(participants, participant) {
   const exists = participants.some((item) => item.id === participant.id || item.phone === participant.phone);
   if (!exists) return [...participants, participant];
   return participants.map((item) => (item.id === participant.id || item.phone === participant.phone ? participant : item));
+}
+
+function readStoredParticipant() {
+  try {
+    const stored = window.localStorage.getItem(PARTICIPANT_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeParticipant(participant) {
+  window.localStorage.setItem(PARTICIPANT_STORAGE_KEY, JSON.stringify(participant));
+}
+
+function clearStoredParticipant() {
+  window.localStorage.removeItem(PARTICIPANT_STORAGE_KEY);
+}
+
+function validateStoredParticipant(storedUser, participants) {
+  if (!storedUser) return null;
+  const participant = participants.find((item) => item.id === storedUser.id || item.phone === storedUser.phone);
+  if (!participant) {
+    clearStoredParticipant();
+    return null;
+  }
+  storeParticipant(participant);
+  return participant;
 }
 
 function mapBidFromDatabase(bid) {
