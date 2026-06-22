@@ -8,11 +8,23 @@ create table if not exists public.matches (
   away_code text not null,
   opening_date date not null,
   match_time text not null,
+  auction_opening_date date not null default (timezone('America/Bogota', now()))::date,
   opening_time text not null,
+  auction_closing_date date not null default (timezone('America/Bogota', now()))::date,
   closing_time text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.matches add column if not exists auction_opening_date date;
+alter table public.matches add column if not exists auction_closing_date date;
+
+update public.matches
+set
+  auction_opening_date = coalesce(auction_opening_date, opening_date),
+  auction_closing_date = coalesce(auction_closing_date, opening_date)
+where auction_opening_date is null
+   or auction_closing_date is null;
 
 create table if not exists public.participants (
   id uuid primary key default gen_random_uuid(),
@@ -59,7 +71,9 @@ insert into public.matches (
   away_code,
   opening_date,
   match_time,
+  auction_opening_date,
   opening_time,
+  auction_closing_date,
   closing_time
 )
 values (
@@ -70,7 +84,9 @@ values (
   'KOR',
   (timezone('America/Bogota', now()))::date,
   '4:00 PM',
+  (timezone('America/Bogota', now()))::date,
   '12:00 AM',
+  (timezone('America/Bogota', now()))::date,
   '11:59 PM'
 )
 on conflict (id) do nothing;
@@ -166,8 +182,14 @@ begin
     raise exception 'Partido no encontrado';
   end if;
 
-  v_opening_at := to_timestamp(to_char(v_match.opening_date, 'YYYY-MM-DD') || ' ' || v_match.opening_time, 'YYYY-MM-DD HH12:MI AM')::timestamp;
-  v_closing_at := to_timestamp(to_char(v_match.opening_date, 'YYYY-MM-DD') || ' ' || v_match.closing_time, 'YYYY-MM-DD HH12:MI AM')::timestamp;
+  v_opening_at := to_timestamp(
+    to_char(coalesce(v_match.auction_opening_date, v_match.opening_date), 'YYYY-MM-DD') || ' ' || v_match.opening_time,
+    'YYYY-MM-DD HH12:MI AM'
+  )::timestamp;
+  v_closing_at := to_timestamp(
+    to_char(coalesce(v_match.auction_closing_date, v_match.opening_date), 'YYYY-MM-DD') || ' ' || v_match.closing_time,
+    'YYYY-MM-DD HH12:MI AM'
+  )::timestamp;
   v_now := timezone('America/Bogota', now());
 
   if v_now < v_opening_at then
@@ -224,9 +246,7 @@ begin
   delete from public.participants where match_id = p_match_id;
   get diagnostics v_deleted_participants = row_count;
 
-  update public.matches
-  set updated_at = now()
-  where id = p_match_id;
+  update public.matches set updated_at = now() where id = p_match_id;
 
   return query select v_deleted_bids, v_deleted_participants;
 end;
