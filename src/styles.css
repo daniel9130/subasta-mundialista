@@ -776,6 +776,19 @@ p {
   padding: 0 12px;
 }
 
+.locked-user-note {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  background: #f6f0e6;
+  color: #6b4a21;
+  font-size: 0.82rem;
+  font-weight: 850;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
 .modal-backdrop {
   position: fixed;
   z-index: 30;
@@ -1065,6 +1078,10 @@ p {
   .current-user-bar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .locked-user-note {
+    white-space: normal;
   }
 
   .config-footer {
