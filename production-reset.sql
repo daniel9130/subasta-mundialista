@@ -15,16 +15,20 @@ set
   away_code = 'KOR',
   opening_date = (timezone('America/Bogota', now()))::date,
   match_time = '4:00 PM',
+  auction_opening_date = (timezone('America/Bogota', now()))::date,
   opening_time = '12:00 AM',
+  auction_closing_date = (timezone('America/Bogota', now()))::date,
   closing_time = '11:59 PM',
   updated_at = now()
 where id = '00000000-0000-4000-8000-000000000001';
 
 select
   'Produccion limpia' as estado,
-  opening_date,
-  match_time,
-  opening_time,
-  closing_time
+  opening_date as fecha_partido,
+  match_time as hora_partido,
+  auction_opening_date as fecha_apertura,
+  opening_time as hora_apertura,
+  auction_closing_date as fecha_cierre,
+  closing_time as hora_cierre
 from public.matches
 where id = '00000000-0000-4000-8000-000000000001';
