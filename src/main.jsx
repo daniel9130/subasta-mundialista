@@ -88,7 +88,9 @@ const defaultMatch = {
   awayCode: "KOR",
   openingDate: todayInputDate(),
   matchTime: "4:00 PM",
+  auctionOpeningDate: todayInputDate(),
   openingTime: "12:00 AM",
+  auctionClosingDate: todayInputDate(),
   closingTime: "11:59 PM",
 };
 
@@ -230,7 +232,7 @@ function App() {
     const { error } = await supabase.from("matches").upsert(mapMatchToDatabase(matchToSave), { onConflict: "id" });
     if (error) {
       console.error(error);
-      if (showStatus) setConfigSaveStatus("No se pudo guardar en Supabase");
+      if (showStatus) setConfigSaveStatus("No se pudo guardar en Supabase. Ejecute de nuevo supabase-schema.sql.");
       return false;
     }
 
@@ -559,7 +561,7 @@ function App() {
             <div>
               <span className="eyebrow compact"><Settings size={15} /> Configuracion</span>
               <h2>Informacion del partido</h2>
-              <p>Seleccione equipos, fecha, hora del partido y ventana de pujas en horario Colombia.</p>
+              <p>Seleccione equipos, fecha del partido y ventana de apertura/cierre de pujas en horario Colombia.</p>
             </div>
             {isSupabaseConfigured && <button className="secondary-button" type="button" onClick={signOutAdmin}>Cerrar sesion</button>}
           </div>
@@ -575,14 +577,20 @@ function App() {
                 {teams.map((team) => <option key={team.code} value={team.name}>{team.name} ({team.code})</option>)}
               </select>
             </label>
-            <label>Fecha
+            <label>Fecha del partido
               <span className="field-with-icon"><CalendarDays size={16} /><input type="date" value={match.openingDate} onChange={(event) => setMatch((current) => ({ ...current, openingDate: event.target.value }))} /></span>
             </label>
             <label>Hora del partido
               <span className="field-with-icon"><Clock size={16} /><input type="time" value={toInputTime(match.matchTime)} onChange={(event) => setMatch((current) => ({ ...current, matchTime: formatTime(event.target.value) }))} /></span>
             </label>
+            <label>Fecha de apertura
+              <span className="field-with-icon"><CalendarDays size={16} /><input type="date" value={match.auctionOpeningDate} onChange={(event) => setMatch((current) => ({ ...current, auctionOpeningDate: event.target.value }))} /></span>
+            </label>
             <label>Hora de apertura
               <span className="field-with-icon"><Clock size={16} /><input type="time" value={toInputTime(match.openingTime)} onChange={(event) => setMatch((current) => ({ ...current, openingTime: formatTime(event.target.value) }))} /></span>
+            </label>
+            <label>Fecha de cierre
+              <span className="field-with-icon"><CalendarDays size={16} /><input type="date" value={match.auctionClosingDate} onChange={(event) => setMatch((current) => ({ ...current, auctionClosingDate: event.target.value }))} /></span>
             </label>
             <label>Hora de cierre
               <span className="field-with-icon"><Clock size={16} /><input type="time" value={toInputTime(match.closingTime)} onChange={(event) => setMatch((current) => ({ ...current, closingTime: formatTime(event.target.value) }))} /></span>
@@ -647,10 +655,10 @@ function App() {
           <div className="stats-grid">
             <article><Coins size={20} /><span>Total recaudado</span><strong>{currency.format(totalRaised)}</strong></article>
             <article><Users size={20} /><span>Participantes</span><strong>{participants.length}</strong></article>
-            <article><Clock size={20} /><span>Fecha Colombia</span><strong>{match.openingDate}</strong></article>
-            <article><Clock size={20} /><span>Partido</span><strong>{match.matchTime}</strong></article>
-            <article><Clock size={20} /><span>Apertura</span><strong>{match.openingTime}</strong></article>
-            <article><Clock size={20} /><span>Cierre</span><strong>{match.closingTime}</strong></article>
+            <article><Clock size={20} /><span>Fecha partido</span><strong>{match.openingDate}</strong></article>
+            <article><Clock size={20} /><span>Hora partido</span><strong>{match.matchTime}</strong></article>
+            <article><Clock size={20} /><span>Apertura pujas</span><strong>{match.auctionOpeningDate} {match.openingTime}</strong></article>
+            <article><Clock size={20} /><span>Cierre pujas</span><strong>{match.auctionClosingDate} {match.closingTime}</strong></article>
           </div>
         </div>
       </section>
@@ -814,7 +822,9 @@ function mapMatchToDatabase(match) {
     away_code: match.awayCode,
     opening_date: match.openingDate,
     match_time: match.matchTime,
+    auction_opening_date: match.auctionOpeningDate,
     opening_time: match.openingTime,
+    auction_closing_date: match.auctionClosingDate,
     closing_time: match.closingTime,
     updated_at: new Date().toISOString(),
   };
@@ -829,7 +839,9 @@ function mapMatchFromDatabase(match) {
     awayCode: match.away_code,
     openingDate: match.opening_date,
     matchTime: match.match_time,
+    auctionOpeningDate: match.auction_opening_date || match.opening_date,
     openingTime: match.opening_time,
+    auctionClosingDate: match.auction_closing_date || match.opening_date,
     closingTime: match.closing_time,
   };
 }
@@ -902,8 +914,10 @@ function buildReportCsv(match, report) {
   const prize = report.soldCells.reduce((sum, cell) => sum + cell.amount, 0);
   const rows = [
     ["Reporte", `${match.homeTeam} vs ${match.awayTeam}`],
-    ["Fecha", match.openingDate],
+    ["Fecha partido", match.openingDate],
     ["Hora partido", match.matchTime],
+    ["Apertura pujas", `${match.auctionOpeningDate} ${match.openingTime}`],
+    ["Cierre pujas", `${match.auctionClosingDate} ${match.closingTime}`],
     [],
     ["Casillas vendidas"],
     ["Marcador", "Usuario", "Valor pagado", "Premio si acierta"],
@@ -936,8 +950,8 @@ function todayInputDate() {
 }
 
 function getAuctionStatus(match, now) {
-  const opening = combineDateAndTime(match.openingDate, match.openingTime);
-  const closing = combineDateAndTime(match.openingDate, match.closingTime);
+  const opening = combineDateAndTime(match.auctionOpeningDate || match.openingDate, match.openingTime);
+  const closing = combineDateAndTime(match.auctionClosingDate || match.openingDate, match.closingTime);
   if (!opening || !closing) return { key: "pending", label: "Subasta sin horario" };
   if (now < opening) return { key: "pending", label: "Subasta pendiente" };
   if (now > closing) return { key: "closed", label: "Subasta cerrada" };
